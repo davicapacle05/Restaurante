@@ -1,0 +1,5 @@
+{
+  "name": "Restaurante Cerejeiras Kiosk",
+  "description": "A complete management suite for Restaurante Cerejeiras featuring a customer-facing Kiosk (Totem), a Kitchen Display System (KDS) for cooks, and a Manager Dashboard for inventory and order tracking.",
+  "requestFramePermissions": []
+}
