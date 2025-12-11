@@ -1,44 +1,55 @@
 import React, { useMemo } from 'react';
 import { useStore } from '../context/StoreContext';
 import { ItemType, Item } from '../types';
-import { PackageOpen, CheckCircle2, RefreshCw } from 'lucide-react';
+import { PackageOpen, CheckCircle2, RefreshCw, Clock, AlertTriangle } from 'lucide-react';
 
 export const KitchenView: React.FC = () => {
   const { orders, items: availableItems, updateItem } = useStore();
 
-  // Calculate consumed stock based on orders relative to the last restock time
+  // Create a map for O(1) access to the LATEST item configuration (including lastRestock)
+  // This ensures we always compare against the most recent restock timestamp
+  const itemMap = useMemo(() => {
+    return new Map(availableItems.map(i => [i.id, i]));
+  }, [availableItems]);
+
   const stockStatus = useMemo(() => {
-    const consumption: Record<string, number> = {};
-    
-    // Initialize
+    const consumption = new Map<string, number>();
+
+    // Initialize all tracked items with 0
     availableItems.forEach(item => {
-      consumption[item.id] = 0;
+      consumption.set(item.id, 0);
     });
 
-    // Calculate total consumption (Count * PortionSize)
-    // ONLY count orders that occurred AFTER the item's last restock timestamp
+    // Iterate through all orders to calculate consumption
     orders.forEach(order => {
-      order.selectedItems.forEach(item => {
-        const currentItem = availableItems.find(i => i.id === item.id);
+      order.selectedItems.forEach(orderItem => {
+        // Get the CURRENT config for this item from our fresh map
+        const currentConfig = itemMap.get(orderItem.id);
         
-        if (currentItem && consumption[item.id] !== undefined) {
-          // If lastRestock is undefined (never stocked), it treats timestamp 0 as start (counts all)
-          // If lastRestock exists, only orders newer than that are counted
-          if (order.timestamp > (currentItem.lastRestock || 0)) {
-            consumption[item.id] += item.portionSize;
-          }
+        // If item exists in current menu
+        if (currentConfig) {
+           const lastRestock = currentConfig.lastRestock || 0;
+           
+           // Only count this order if it happened STRICTLY AFTER the last restock
+           // This is the core logic: clicking restock sets lastRestock to Date.now()
+           // So all previous orders (timestamp < Date.now()) are ignored.
+           if (order.timestamp > lastRestock) {
+             const currentConsumed = consumption.get(orderItem.id) || 0;
+             consumption.set(orderItem.id, currentConsumed + orderItem.portionSize);
+           }
         }
       });
     });
 
     return consumption;
-  }, [orders, availableItems]);
+  }, [orders, itemMap, availableItems]);
 
   const handleRestock = (item: Item) => {
-    // Instead of increasing maxStock, we reset the "Start Time" for consumption tracking.
-    // This effectively zeroes out the consumption counter for this item.
-    if (confirm(`Confirmar reposição de ${item.name}? O estoque voltará para ${formatValue(item.maxStock, item.unit)} (100%).`)) {
-      updateItem({ ...item, lastRestock: Date.now() });
+    // We add 1ms buffer just to be absolutely safe mathematically against orders created in the exact same millisecond
+    const newRestockTime = Date.now() + 1; 
+
+    if (confirm(`Confirmar reposição de ${item.name}? O contador será zerado.`)) {
+      updateItem({ ...item, lastRestock: newRestockTime });
     }
   };
 
@@ -60,25 +71,33 @@ export const KitchenView: React.FC = () => {
       </h2>
       <div className="space-y-4 flex-grow">
         {getItemsByType(type).map(item => {
-          // maxStock now represents the "Bin Capacity", not accumulated total.
           const batchSize = item.maxStock; 
-
-          const consumed = stockStatus[item.id] || 0;
+          const consumed = stockStatus.get(item.id) || 0;
           const remaining = Math.max(0, batchSize - consumed);
-          
           const percentage = Math.min(100, Math.max(0, (remaining / batchSize) * 100));
           
           const isLowStock = remaining <= item.minStockAlert;
           const isCritical = remaining === 0;
 
+          // Unique key to force re-render when critical values change
+          const componentKey = `${item.id}-${item.lastRestock || 'init'}-${consumed}`;
+
           return (
-            <div key={item.id} className={`p-4 rounded-xl border transition-all flex flex-col gap-3 ${isLowStock ? 'bg-red-900/20 border-red-500/50' : 'bg-slate-700/30 border-slate-600'}`}>
+            <div key={componentKey} className={`p-4 rounded-xl border transition-all flex flex-col gap-3 ${isLowStock ? 'bg-red-900/20 border-red-500/50' : 'bg-slate-700/30 border-slate-600'}`}>
               <div className="flex justify-between items-start">
                 <div>
                   <span className="text-slate-100 font-bold block text-lg">{item.name}</span>
-                  <span className="text-xs text-slate-400">
-                    Capacidade: {formatValue(batchSize, item.unit)}
-                  </span>
+                  <div className="flex flex-col">
+                    <span className="text-xs text-slate-400">
+                      Capacidade: {formatValue(batchSize, item.unit)}
+                    </span>
+                    {item.lastRestock && (
+                      <span className="text-[10px] text-emerald-400 flex items-center gap-1 mt-1 font-mono bg-emerald-950/30 px-1.5 py-0.5 rounded w-fit">
+                        <Clock size={10} /> 
+                        Reposto: {new Date(item.lastRestock).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second: '2-digit'})}
+                      </span>
+                    )}
+                  </div>
                 </div>
                 
                 <div className="text-right">
@@ -90,9 +109,11 @@ export const KitchenView: React.FC = () => {
               </div>
 
               {/* Progress Bar */}
-              <div className="w-full h-3 bg-slate-900 rounded-full overflow-hidden border border-slate-700">
+              <div className="w-full h-3 bg-slate-900 rounded-full overflow-hidden border border-slate-700 relative">
+                {/* Background Pattern */}
+                <div className="absolute inset-0 opacity-10" style={{backgroundImage: 'repeating-linear-gradient(45deg, transparent, transparent 5px, #fff 5px, #fff 10px)'}}></div>
                 <div 
-                  className={`h-full transition-all duration-500 ${
+                  className={`h-full transition-all duration-700 ease-out ${
                     isCritical ? 'bg-red-600' : 
                     isLowStock ? 'bg-orange-500 animate-pulse' : 'bg-emerald-500'
                   }`}
@@ -103,7 +124,7 @@ export const KitchenView: React.FC = () => {
               {/* Status Footer & Actions */}
               <div className="flex justify-between items-center pt-2 border-t border-slate-600/50">
                 <span className="text-xs text-slate-400">
-                  Consumido (Atual): {formatValue(consumed, item.unit)}
+                  Consumido: {formatValue(consumed, item.unit)}
                 </span>
                 
                 {isLowStock ? (
@@ -111,13 +132,13 @@ export const KitchenView: React.FC = () => {
                     onClick={() => handleRestock(item)}
                     className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white px-3 py-2 rounded-lg text-xs font-bold transition-colors shadow-lg animate-pulse"
                    >
-                     <RefreshCw size={14} />
+                     <RefreshCw size={14} className="animate-spin-slow" />
                      Confirmar Reposição
                    </button>
                 ) : (
                   <div className="flex items-center gap-1 text-emerald-500/50">
                     <CheckCircle2 size={14} />
-                    <span className="text-xs font-bold uppercase">OK</span>
+                    <span className="text-xs font-bold uppercase">Estoque OK</span>
                   </div>
                 )}
               </div>

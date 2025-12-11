@@ -26,7 +26,7 @@ const GlobalNavigation = () => {
   return (
     <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 bg-white/90 backdrop-blur-md p-2 rounded-2xl shadow-2xl z-50 flex gap-4 border border-gray-200">
       <NavLink to="/" icon={<Monitor size={20} />} label="Totem" />
-      <NavLink to="/cozinha" icon={<BarChart2 size={20} />} label="Stats" />
+      <NavLink to="/cozinha" icon={<BarChart2 size={20} />} label="Cozinha" />
       <NavLink to="/admin" icon={<Settings size={20} />} label="Admin" />
     </div>
   );
