@@ -7,6 +7,7 @@ interface StoreContextType {
   items: Item[];
   registerOrder: (customerName: string, selectedItems: Item[], paymentMethod: PaymentMethod) => Order;
   updateItem: (updatedItem: Item) => void;
+  createItem: (newItem: Omit<Item, 'id'>) => void;
   addStock: (itemId: string, quantity: number) => void;
   resetDatabase: () => void;
   resetMenu: () => void;
@@ -62,10 +63,14 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, []);
 
   const registerOrder = (customerName: string, selectedItems: Item[], paymentMethod: PaymentMethod): Order => {
+    // Calculate Total
+    const totalValue = selectedItems.reduce((acc, item) => acc + (item.price || 0), 0);
+
     const newOrder: Order = {
       id: Math.floor(Math.random() * 100000).toString(),
       customerName,
       selectedItems,
+      totalValue,
       paymentMethod,
       timestamp: Date.now()
     };
@@ -75,6 +80,14 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const updateItem = (updatedItem: Item) => {
     setItems(prev => prev.map(i => i.id === updatedItem.id ? updatedItem : i));
+  };
+
+  const createItem = (newItemData: Omit<Item, 'id'>) => {
+    const newItem: Item = {
+      ...newItemData,
+      id: `custom_${Date.now()}`,
+    };
+    setItems(prev => [...prev, newItem]);
   };
 
   const addStock = (itemId: string, quantity: number) => {
@@ -99,7 +112,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }
 
   return (
-    <StoreContext.Provider value={{ orders, items, registerOrder, updateItem, addStock, resetDatabase, resetMenu }}>
+    <StoreContext.Provider value={{ orders, items, registerOrder, updateItem, createItem, addStock, resetDatabase, resetMenu }}>
       {children}
     </StoreContext.Provider>
   );
